@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>로또 커스텀 번호 추출기</title>
+<style>
+:root{--bg:#0b1020;--card:#172136;--line:#2b3953;--text:#eef4ff;--muted:#9fb0c8;--accent:#6d8cff;--ok:#4ade80;--bad:#fb7185}
+*{box-sizing:border-box}body{margin:0;background:#0b1020;color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:20px}h1{margin:0 0 6px;font-size:28px}.sub,.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}h2{font-size:17px;margin:0 0 13px}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}select,input,button{font:inherit}select,input{background:#0e1728;color:white;border:1px solid var(--line);border-radius:9px;padding:10px}
+button{border:0;border-radius:10px;min-height:42px;padding:9px 13px;cursor:pointer;font-weight:700}.primary{background:var(--accent);color:white}.ghost{background:#26334b;color:white}
+.status{font-size:13px;margin-top:10px;color:var(--muted);line-height:1.55}.ok{color:var(--ok)}.bad{color:var(--bad)}
+.balls{display:grid;grid-template-columns:repeat(9,1fr);gap:7px;margin-top:12px}.ball{aspect-ratio:1;border-radius:50%;background:#263650;color:white;border:2px solid transparent;font-weight:800;padding:0}
+.ball.on{border-color:white;outline:3px solid rgba(109,140,255,.25)}.ball.auto::after{content:"A";font-size:9px;position:absolute;transform:translate(4px,-13px);background:var(--accent);border-radius:8px;padding:1px 3px}
+.draw{display:flex;justify-content:space-between;gap:8px;padding:9px;border-bottom:1px solid var(--line);font-size:13px}.nums{font-weight:700}.selected{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.selected span{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#2a3a57;font-weight:800}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{border-bottom:1px solid var(--line);padding:7px;text-align:right}td:first-child,th:first-child{text-align:left}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}.range{display:grid;grid-template-columns:1fr 1fr;gap:6px}label{font-size:12px;color:var(--muted)}.result{border:1px solid var(--line);border-radius:11px;padding:10px;margin-top:8px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.balls{grid-template-columns:repeat(7,1fr)}}@media(max-width:480px){.balls{grid-template-columns:repeat(6,1fr)}}
+</style>
+</head>
+<body><div class="wrap">
+<h1>로또 커스텀 번호 추출기</h1>
+<p class="sub">최근 회차 분석 → 자동 제외수 추천 → 직접 추가/삭제 → 조건 필터링 번호 생성</p>
+<div class="grid"><div>
+<div class="card"><h2>1. 최신 데이터</h2>
+<div class="row">
+<select id="recentN"><option value="5">최근 5회</option><option value="10" selected>최근 10회</option><option value="20">최근 20회</option><option value="30">최근 30회</option></select>
+<select id="excludeCount"><option>8</option><option selected>12</option><option>15</option><option>18</option></select>
+<button id="load" class="primary">최신 데이터 불러오기</button>
+</div><div id="status" class="status"></div></div>
+
+<div class="card"><h2>2. 제외수 조정</h2>
+<div class="row"><button id="apply" class="ghost">자동 추천 적용</button><button id="clear" class="ghost">전체 해제</button><span id="count" class="muted"></span></div>
+<div id="balls" class="balls"></div><div id="selected" class="selected"></div></div>
+
+<div class="card"><h2>3. 번호 생성 조건</h2>
+<div class="controls">
+<label>후보 수<input id="pool" type="number" value="1000" min="100" max="20000"></label>
+<label>추천 줄 수<input id="top" type="number" value="10" min="1" max="30"></label>
+<label>합계<div class="range"><input id="sumMin" type="number" value="120"><input id="sumMax" type="number" value="160"></div></label>
+<label>홀수<div class="range"><input id="oddMin" type="number" value="2"><input id="oddMax" type="number" value="4"></div></label>
+<label>3배수<div class="range"><input id="m3Min" type="number" value="1"><input id="m3Max" type="number" value="3"></div></label>
+<label>소수<div class="range"><input id="pMin" type="number" value="1"><input id="pMax" type="number" value="3"></div></label>
+<label>저번호(1~22)<div class="range"><input id="lMin" type="number" value="2"><input id="lMax" type="number" value="4"></div></label>
+<label>연번 쌍<div class="range"><input id="sMin" type="number" value="0"><input id="sMax" type="number" value="1"></div></label>
+</div><div class="row" style="margin-top:12px"><button id="gen" class="primary">추천 번호 생성</button><button id="regen" class="ghost">다시 생성</button></div><div id="genStatus" class="status"></div></div>
+</div><div>
+<div class="card"><h2>최근 당첨번호</h2><div id="draws"></div></div>
+<div class="card"><h2>자동 제외수 추천</h2><div id="auto" class="selected"></div><table><thead><tr><th>번호</th><th>출현</th><th>최근성</th><th>점수</th></tr></thead><tbody id="score"></tbody></table></div>
+<div class="card"><h2>추천 조합</h2><div id="results" class="muted">번호를 생성해주세요.</div></div>
+</div></div></div>
+<script>
+const EMBEDDED=[{"draw_no":1201,"date":"2025-12-06T00:00:00Z","numbers":[7,9,24,27,35,36],"bonus_no":37},{"draw_no":1202,"date":"2025-12-13T00:00:00Z","numbers":[5,12,21,33,37,40],"bonus_no":7},{"draw_no":1203,"date":"2025-12-20T00:00:00Z","numbers":[3,6,18,29,35,39],"bonus_no":24},{"draw_no":1204,"date":"2025-12-27T00:00:00Z","numbers":[8,16,28,30,31,44],"bonus_no":27},{"draw_no":1205,"date":"2026-01-03T00:00:00Z","numbers":[1,4,16,23,31,41],"bonus_no":2},{"draw_no":1206,"date":"2026-01-10T00:00:00Z","numbers":[1,3,17,26,27,42],"bonus_no":23},{"draw_no":1207,"date":"2026-01-17T00:00:00Z","numbers":[10,22,24,27,38,45],"bonus_no":11},{"draw_no":1208,"date":"2026-01-24T00:00:00Z","numbers":[6,27,30,36,38,42],"bonus_no":25},{"draw_no":1209,"date":"2026-01-31T00:00:00Z","numbers":[2,17,20,35,37,39],"bonus_no":24},{"draw_no":1210,"date":"2026-02-07T00:00:00Z","numbers":[1,7,9,17,27,38],"bonus_no":31},{"draw_no":1211,"date":"2026-02-14T00:00:00Z","numbers":[23,26,27,35,38,40],"bonus_no":10},{"draw_no":1212,"date":"2026-02-21T00:00:00Z","numbers":[5,8,25,31,41,44],"bonus_no":45},{"draw_no":1213,"date":"2026-02-28T00:00:00Z","numbers":[5,11,25,27,36,38],"bonus_no":2},{"draw_no":1214,"date":"2026-03-07T00:00:00Z","numbers":[10,15,19,27,30,33],"bonus_no":14},{"draw_no":1215,"date":"2026-03-14T00:00:00Z","numbers":[13,15,19,21,44,45],"bonus_no":39},{"draw_no":1216,"date":"2026-03-21T00:00:00Z","numbers":[3,10,14,15,23,24],"bonus_no":25},{"draw_no":1217,"date":"2026-03-28T00:00:00Z","numbers":[8,10,15,20,29,31],"bonus_no":41},{"draw_no":1218,"date":"2026-04-04T00:00:00Z","numbers":[3,28,31,32,42,45],"bonus_no":25},{"draw_no":1219,"date":"2026-04-11T00:00:00Z","numbers":[1,2,15,28,39,45],"bonus_no":31},{"draw_no":1220,"date":"2026-04-18T00:00:00Z","numbers":[2,22,25,28,34,43],"bonus_no":16},{"draw_no":1221,"date":"2026-04-25T00:00:00Z","numbers":[6,13,18,28,30,36],"bonus_no":9},{"draw_no":1222,"date":"2026-05-02T00:00:00Z","numbers":[4,11,17,22,32,41],"bonus_no":34},{"draw_no":1223,"date":"2026-05-09T00:00:00Z","numbers":[16,18,20,32,33,39],"bonus_no":26},{"draw_no":1224,"date":"2026-05-16T00:00:00Z","numbers":[9,18,21,27,44,45],"bonus_no":28},{"draw_no":1225,"date":"2026-05-23T00:00:00Z","numbers":[8,9,19,25,41,42],"bonus_no":33},{"draw_no":1226,"date":"2026-05-30T00:00:00Z","numbers":[4,6,13,17,26,28],"bonus_no":41},{"draw_no":1227,"date":"2026-06-06T00:00:00Z","numbers":[1,14,16,34,41,44],"bonus_no":13},{"draw_no":1228,"date":"2026-06-13T00:00:00Z","numbers":[24,29,30,31,35,44],"bonus_no":1},{"draw_no":1229,"date":"2026-06-20T00:00:00Z","numbers":[12,13,29,34,37,42],"bonus_no":16},{"draw_no":1230,"date":"2026-06-27T00:00:00Z","numbers":[3,8,9,22,28,42],"bonus_no":45},{"draw_no":1231,"date":"2026-07-04T00:00:00Z","numbers":[4,13,14,18,31,38],"bonus_no":15},{"draw_no":1232,"date":"2026-07-11T00:00:00Z","numbers":[12,15,19,22,24,36],"bonus_no":3},{"draw_no":1233,"date":"2026-07-18T00:00:00Z","numbers":[2,7,20,25,37,40],"bonus_no":29},{"draw_no":1234,"date":"2026-07-25T00:00:00Z","numbers":[1,15,19,31,35,43],"bonus_no":27},{"draw_no":1235,"date":"2026-08-01T00:00:00Z","numbers":[6,7,11,15,39,43],"bonus_no":20},{"draw_no":1236,"date":"2026-08-08T00:00:00Z","numbers":[12,18,21,29,34,38],"bonus_no":10},{"draw_no":1237,"date":"2026-08-15T00:00:00Z","numbers":[10,20,23,34,37,40],"bonus_no":36},{"draw_no":1238,"date":"2026-08-22T00:00:00Z","numbers":[2,13,18,32,38,42],"bonus_no":22},{"draw_no":1239,"date":"2026-08-29T00:00:00Z","numbers":[11,13,22,32,33,36],"bonus_no":8},{"draw_no":1240,"date":"2026-09-05T00:00:00Z","numbers":[11,13,19,20,31,44],"bonus_no":27},{"draw_no":1241,"date":"2026-09-12T00:00:00Z","numbers":[7,13,16,23,24,43],"bonus_no":9},{"draw_no":1242,"date":"2026-09-19T00:00:00Z","numbers":[2,4,10,16,31,41],"bonus_no":9},{"draw_no":1243,"date":"2026-09-26T00:00:00Z","numbers":[9,18,24,38,43,44],"bonus_no":35}];
+const SOURCES=['./data/all.json','./data/recent.json','https://smok95.github.io/lotto/results/all.json'];
+const $=x=>document.getElementById(x), primes=new Set([2,3,5,7,11,13,17,19,23,29,31,37,41,43]);
+let all=EMBEDDED, recent=[], auto=new Set(), excluded=new Set();
+
+async function getData(){
+  for(const url of SOURCES){
+    try{
+      const r=await fetch(url+'?t='+Date.now(),{cache:'no-store'});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      if(Array.isArray(d)&&d.length) return {d,url};
+    }catch(e){}
+  }
+  return {d:EMBEDDED,url:'내장 데이터'};
+}
+function renderBalls(){
+  $('balls').innerHTML='';
+  for(let n=1;n<=45;n++){
+    const b=document.createElement('button');b.type='button';b.className='ball'+(excluded.has(n)?' on':'')+(auto.has(n)?' auto':'');b.textContent=n;
+    b.onclick=()=>{excluded.has(n)?excluded.delete(n):excluded.add(n);renderBalls();renderSelected();};$('balls').appendChild(b);
+  }
+}
+function renderSelected(){
+ $('count').textContent='선택 '+excluded.size+'개';
+ $('selected').innerHTML=[...excluded].sort((a,b)=>a-b).map(n=>'<span>'+n+'</span>').join('')||'<span style="width:auto;background:none" class="muted">없음</span>';
+}
+function analyze(){
+ const N=Math.min(Number($('recentN').value),all.length);recent=all.slice().sort((a,b)=>b.draw_no-a.draw_no).slice(0,N);
+ const st=Array.from({length:46},(_,n)=>({n,f:0,r:999,streak:0,score:0}));
+ recent.forEach((d,i)=>d.numbers.forEach(n=>{st[n].f++;st[n].r=Math.min(st[n].r,i);if(i===0)st[n].streak++;if(i===1&&recent[0].numbers.includes(n))st[n].streak++;}));
+ for(let n=1;n<=45;n++){let s=st[n];let fs=s.f/N,rs=s.r===999?0:1-s.r/N,ss=Math.min(1,s.streak/2);s.score=fs*.5+rs*.3+ss*.2;}
+ let rank=st.slice(1).sort((a,b)=>b.score-a.score||b.f-a.f||a.r-b.r||a.n-b.n), k=Number($('excludeCount').value);
+ auto=new Set(rank.slice(0,k).map(x=>x.n));
+ $('auto').innerHTML=[...auto].sort((a,b)=>a-b).map(n=>'<span>'+n+'</span>').join('');
+ $('score').innerHTML=rank.slice(0,15).map(s=>`<tr><td>${s.n}</td><td>${s.f}회</td><td>${s.r===999?'-':s.r===0?'직전':(s.r+1)+'회 내'}</td><td>${(s.score*100).toFixed(1)}</td></tr>`).join('');
+ $('draws').innerHTML=recent.map(d=>`<div class="draw"><strong>${d.draw_no}회</strong><span class="nums">${d.numbers.join(' · ')}</span><span class="muted">${String(d.date).slice(5,10)}</span></div>`).join('');
+ renderBalls();
+}
+async function load(){
+ $('status').textContent='데이터 확인 중...';
+ const x=await getData(); all=x.d; analyze();
+ const latest=all.slice().sort((a,b)=>b.draw_no-a.draw_no)[0];
+ const local=x.url==='내장 데이터';
+ $('status').innerHTML=(local?'<span class="bad">외부/로컬 데이터 요청이 차단되어 내장 데이터 사용</span>':'<span class="ok">데이터 연결 성공</span>')+
+ ` · 최신 ${latest.draw_no}회 (${String(latest.date).slice(0,10)}) · ${$('recentN').value}회 분석`;
+}
+function metric(a){let seq=0;for(let i=1;i<a.length;i++)if(a[i]-a[i-1]===1)seq++;return{sum:a.reduce((x,y)=>x+y,0),odd:a.filter(x=>x%2).length,m3:a.filter(x=>x%3===0).length,p:a.filter(x=>primes.has(x)).length,l:a.filter(x=>x<=22).length,seq}}
+function range(v,a,b){return v>=+$ (a).value&&v<=+$ (b).value}
+function ok(m){return range(m.sum,'sumMin','sumMax')&&range(m.odd,'oddMin','oddMax')&&range(m.m3,'m3Min','m3Max')&&range(m.p,'pMin','pMax')&&range(m.l,'lMin','lMax')&&range(m.seq,'sMin','sMax')}
+function rnd(p){let a=p.slice();for(let i=a.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a.slice(0,6).sort((x,y)=>x-y)}
+function generate(){
+ const p=Array.from({length:45},(_,i)=>i+1).filter(n=>!excluded.has(n));if(p.length<6)return;
+ const count=Math.min(20000,Math.max(100,+$('pool').value||1000)), top=Math.min(30,Math.max(1,+$('top').value||10)), map=new Map();
+ for(let i=0;i<count;i++){let a=rnd(p),k=a.join('-');if(map.has(k))continue;let m=metric(a);if(ok(m))map.set(k,{a,m,score:100-Math.abs(m.sum-140)})}
+ let rows=[...map.values()].sort((a,b)=>b.score-a.score).slice(0,top);
+ $('genStatus').textContent=`${count.toLocaleString()}개 생성 · ${map.size.toLocaleString()}개 통과`;
+ $('results').innerHTML=rows.length?rows.map((r,i)=>`<div class="result"><strong>#${i+1}</strong> &nbsp; ${r.a.join(' · ')} <span class="muted"> / 합 ${r.m.sum}, 홀 ${r.m.odd}</span></div>`).join(''):'조건 통과 조합 없음';
+}
+$('load').onclick=load;$('apply').onclick=()=>{excluded=new Set(auto);renderBalls();renderSelected()};$('clear').onclick=()=>{excluded.clear();renderBalls();renderSelected()};
+$('gen').onclick=generate;$('regen').onclick=generate;$('recentN').onchange=()=>{if(all.length)analyze()};$('excludeCount').onchange=()=>{if(all.length)analyze()};
+renderBalls();renderSelected();load();
+</script></body></html>
