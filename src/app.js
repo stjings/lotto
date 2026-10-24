@@ -84,6 +84,8 @@ function renderNumbers(focusNumber) {
       ? `요청 ${int("count").toLocaleString()}줄 > 가능한 ${total.toLocaleString()}줄. 전체 ${total.toLocaleString()}개 조합만 검사합니다.`
       : "";
   renderRecommendationDiff();
+  renderStudioSummary();
+  renderFrequency();
   if (focusNumber)
     $("number-grid")
       .querySelector(`[data-number="${focusNumber}"]`)
@@ -156,10 +158,12 @@ async function load() {
     state.draws = data.draws;
     const latest = state.draws[0],
       stale = isStale(latest);
+    $("header-draw").textContent =
+      `${latest.draw_no}회 기록까지 보관${stale ? " · 갱신 확인 필요" : ""}`;
     $("data-status").innerHTML =
       `<a href="${DATA_SOURCE}" target="_blank" rel="noreferrer">smok95 공개 데이터셋</a> · ${escape(data.source)} · ${state.draws.length.toLocaleString()}회 보관<br>파일 갱신 ${data.updatedAt ? escape(new Date(data.updatedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })) + " KST" : "시각 미제공"} · 확인 ${escape(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }))} KST${stale ? '<br><span class="warning">다음 추첨 예정 시각이 지났습니다. 최신 결과 반영 여부를 확인하세요.</span>' : ""}<br><span class="muted">제3자 데이터이므로 구매·당첨 확인은 동행복권 공식 결과와 대조하세요.</span>`;
     $("latest-draw").innerHTML =
-      `<div class="latest"><div><span class="muted">보유 데이터 최신 회차</span><h3>${latest.draw_no}회 <small class="muted">${latest.date.slice(0, 10)}</small></h3></div>${balls(latest.numbers, latest.bonus_no)}</div>`;
+      `<div class="latest"><div><span class="muted">보유 데이터 최신 회차</span><h3>${latest.draw_no}회 <small class="muted">${latest.date.slice(0, 10)}</small></h3></div>${balls(latest.numbers, latest.bonus_no)}${stale ? '<p class="warning latest-warning">새 회차 반영을 확인해주세요. 현재 보유한 마지막 정상 기록입니다.</p>' : ""}</div>`;
     $("compare-draw").innerHTML = state.draws
       .map(
         (d) =>
@@ -168,6 +172,7 @@ async function load() {
       .join("");
     renderHistory();
     renderRecommendation();
+    renderFrequency();
     renderSaved();
     $("run").disabled = false;
   } catch (error) {
@@ -229,6 +234,7 @@ function applyConfig(c) {
     : "custom";
   renderFilters();
   renderNumbers();
+  renderStudioSummary();
 }
 function resultRows() {
   if ($("result-view").value === "baseline")
@@ -242,8 +248,12 @@ function renderResults() {
   const result = state.result,
     rows = resultRows();
   $("result-count").textContent = rows.length + " LINES";
-  $("result-summary").innerHTML =
-    `생성 <b>${result.generated.toLocaleString()}</b> · 통과 ${result.passed.toLocaleString()} · 탈락 ${result.rejected.toLocaleString()} · ${(result.elapsedMs / 1000).toFixed(2)}초<br>시드 <b>${escape(result.config.seed)}</b> · ${result.historyThrough ?? "없음"}회까지 분석 · ${result.cancelled ? "취소된 부분 결과" : "완료"}${result.capped ? `<br><span class="warning">가능한 전체 ${result.total.toLocaleString()}개 조합으로 제한했습니다.</span>` : ""}${rows.length < result.config.top ? '<br><span class="warning">필터 또는 중복도 제한으로 TOP 요청량보다 결과가 적습니다. 조건을 완화하세요.</span>' : ""}<br><span class="muted">통과 후보 랜덤은 필터 적용 후 추출합니다. 완전 랜덤은 1~45 전체에서 제외수·필터·중복도 제한 없이 추출한 비교군입니다.</span>`;
+  $("result-summary").innerHTML = `
+    <div class="result-summary-stats"><div><span>만든 후보</span><b>${result.generated.toLocaleString()}</b></div><div><span>조건 통과</span><b>${result.passed.toLocaleString()}</b></div><div><span>필터 탈락</span><b>${result.rejected.toLocaleString()}</b></div></div>
+    <div class="result-meta">${(result.elapsedMs / 1000).toFixed(2)}초 · ${result.historyThrough ?? "없음"}회 기록 기준 · ${result.cancelled ? "취소한 실험의 부분 결과" : "실험 완료"}</div>
+    ${result.capped ? `<p class="warning">가능한 전체 ${result.total.toLocaleString()}개 조합으로 제한했습니다.</p>` : ""}
+    ${rows.length < result.config.top ? '<p class="warning">필터 또는 중복도 제한으로 TOP 요청량보다 결과가 적습니다. 조건을 완화하세요.</p>' : ""}
+    <details class="result-method"><summary>실험 정보와 비교 방식</summary><p>시드 <b>${escape(result.config.seed)}</b> · 같은 설정과 시드로 다시 실행하면 결과를 재현할 수 있어요.</p><p>통과 후보 랜덤은 필터를 적용한 뒤 고릅니다. 완전 랜덤은 1~45 전체에서 제외수·필터·중복도 제한 없이 고른 비교군이에요.</p></details>`;
   $("result-list").innerHTML = rows.length
     ? rows
         .map(
@@ -260,6 +270,7 @@ function renderResults() {
     : '<p class="warning">통과한 조합이 없습니다. 필터를 완화하고 다시 실행하세요.</p>';
 }
 function renderSaved() {
+  $("saved-count").textContent = state.saved.tickets.length;
   $("presets").innerHTML = state.saved.presets.length
     ? state.saved.presets
         .map(
@@ -323,6 +334,7 @@ function start() {
       $("run-status").textContent =
         `${data.result.cancelled ? "취소 · 부분 결과" : "완료"} · ${data.result.generated.toLocaleString()}줄 · ${(data.result.elapsedMs / 1000).toFixed(2)}초`;
       renderResults();
+      if (location.hash === "#simulation") location.hash = "results";
       state.saved.runs.unshift({
         date:
           new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) +
@@ -531,12 +543,14 @@ $("saved").onclick = safely((e) => {
   const d = b.dataset;
   if (d.preset !== undefined) {
     applyConfig(state.saved.presets[Number(d.preset)].config);
+    location.hash = "exclusions";
     notify("저장 설정을 적용했습니다.");
   }
   if (d.run !== undefined) {
     state.result = state.saved.runs[Number(d.run)];
     $("csv").disabled = true;
     renderResults();
+    location.hash = "results";
     notify(
       "저장된 TOP 결과입니다. 전체 후보 CSV는 재실행 후 받을 수 있습니다.",
     );
@@ -554,9 +568,10 @@ $("saved").onclick = safely((e) => {
 $("compare-draw").onchange = renderSaved;
 try {
   document.documentElement.dataset.theme =
-    localStorage.getItem("lotto-lab-theme") ??
-    (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-} catch {}
+    localStorage.getItem("lotto-lab-theme") ?? "light";
+} catch {
+  document.documentElement.dataset.theme = "light";
+}
 $("theme").onclick = () => {
   const theme =
     document.documentElement.dataset.theme === "light" ? "dark" : "light";
@@ -565,24 +580,149 @@ $("theme").onclick = () => {
     localStorage.setItem("lotto-lab-theme", theme);
   } catch {}
 };
-const observer = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries)
-      if (entry.isIntersecting)
-        document
-          .querySelectorAll(".bottom-nav a")
-          .forEach((a) =>
-            a.setAttribute(
-              "aria-current",
-              String(a.hash === "#" + entry.target.id),
-            ),
-          );
-  },
-  { rootMargin: "-15% 0px -55% 0px" },
-);
-["analysis", "exclusions", "filters", "simulation", "results"].forEach((id) =>
-  observer.observe($(id)),
-);
+const STEPS = [
+  "analysis",
+  "exclusions",
+  "filters",
+  "simulation",
+  "results",
+  "saved",
+];
+const PAGE_COPY = {
+  analysis: [
+    "작은 기록에서 시작하는, 나의 실험",
+    "지난 당첨번호를 구경하고 어떤 번호를 남길지 생각해보세요.",
+  ],
+  exclusions: [
+    "이번엔 어떤 번호를 쉬게 할까요?",
+    "마음에 걸리는 번호는 잠깐 빼두세요. 언제든 다시 고를 수 있어요.",
+  ],
+  filters: [
+    "나만의 기준을 더해보세요",
+    "합계부터 홀짝까지, 원하는 조합의 모습을 정해보세요.",
+  ],
+  simulation: [
+    "준비됐다면, 조합을 만나볼 시간",
+    "지금 정한 기준으로 후보를 만들어요. 결과는 언제든 비교할 수 있어요.",
+  ],
+  results: [
+    "내 기준을 통과한 조합들이에요",
+    "점수와 번호 구성을 살펴보고 마음에 드는 후보를 모아보세요.",
+  ],
+  saved: [
+    "마음에 드는 선택을 모아두세요",
+    "나의 설정과 지난 실험, 구매 후보를 이 브라우저에서 보관해요.",
+  ],
+};
+const STEP_LABELS = [
+  "당첨 분석",
+  "제외수 선택",
+  "필터 설정",
+  "시뮬레이션",
+  "후보 비교",
+  "내 저장함",
+];
+function renderRoute() {
+  const requested = location.hash.slice(1);
+  const view = STEPS.includes(requested) ? requested : "analysis";
+  const index = STEPS.indexOf(view);
+  document.body.dataset.view = view;
+  for (const id of STEPS) $(id).hidden = id !== view;
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    if (a.dataset.nav === view) a.setAttribute("aria-current", "step");
+    else a.removeAttribute("aria-current");
+  });
+  $("page-title").textContent = PAGE_COPY[view][0];
+  $("page-description").textContent = PAGE_COPY[view][1];
+  $("header-location").textContent = STEP_LABELS[index];
+  $("page-eyebrow").textContent =
+    view === "saved"
+      ? "MY LITTLE NOTEBOOK"
+      : `MY NUMBER LAB / ${String(index + 1).padStart(2, "0")}`;
+  $("page-step").innerHTML =
+    view === "saved"
+      ? ""
+      : `${String(index + 1).padStart(2, "0")} <span>/ 05</span>`;
+  $("step-track").hidden = view === "saved";
+  $("step-track").innerHTML = STEPS.slice(0, 5)
+    .map(
+      (id, i) =>
+        `<a href="#${id}" class="${i === index ? "active" : i < index ? "complete" : ""}" aria-label="${STEP_LABELS[i]}"></a>`,
+    )
+    .join("");
+  $("previous-step").hidden = index === 0 || view === "saved";
+  $("previous-step").href = "#" + STEPS[Math.max(0, index - 1)];
+  $("next-step").href = "#" + STEPS[Math.min(index + 1, 5)];
+  $("next-step").textContent =
+    view === "saved"
+      ? "새 실험 시작하기 →"
+      : index === 4
+        ? "내 저장함 보기 →"
+        : `${STEP_LABELS[index + 1]}${index === 0 ? "하기" : "으로"} →`;
+  if (view === "saved") $("next-step").href = "#exclusions";
+  if (index === 0)
+    $("next-step").parentElement.style.justifyContent = "flex-end";
+  else $("next-step").parentElement.style.justifyContent = "space-between";
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+function renderFrequency() {
+  if (!state.draws.length) return;
+  const frequencies = NUMBERS.map(
+    (n) => state.draws.slice(0, 10).filter((d) => d.numbers.includes(n)).length,
+  );
+  const max = Math.max(1, ...frequencies);
+  $("frequency-map").innerHTML = NUMBERS.map(
+    (n, i) =>
+      `<button type="button" class="frequency-cell" data-frequency="${n}" style="--heat:${Math.round(8 + (frequencies[i] / max) * 33)}%" aria-label="${n}번 최근 10회 ${frequencies[i]}회 출현, 제외 ${state.excluded.has(n) ? "선택됨" : "선택 안 됨"}" aria-pressed="${state.excluded.has(n)}"><b>${n}</b><small>${frequencies[i]}회</small></button>`,
+  ).join("");
+}
+function renderStudioSummary() {
+  const remaining = 45 - state.excluded.size;
+  $("summary-remaining").innerHTML = `${remaining}<small>개</small>`;
+  $("summary-excluded").innerHTML = `${state.excluded.size}<small>개</small>`;
+  $("summary-combinations").textContent = choose(remaining).toLocaleString();
+  $("summary-numbers").innerHTML = state.excluded.size
+    ? [...state.excluded]
+        .sort((a, b) => a - b)
+        .map(ball)
+        .join("")
+    : '<span class="muted">아직 제외한 번호가 없어요.</span>';
+  const filters = [];
+  if (state.filters.sum.enabled)
+    filters.push(`합계 ${state.filters.sum.min}~${state.filters.sum.max}`);
+  if (state.filters.odd.enabled)
+    filters.push(`홀수 ${state.filters.odd.values.join("·")}개`);
+  const other = Object.entries(state.filters).filter(
+    ([k, v]) => !["sum", "odd"].includes(k) && v.enabled,
+  ).length;
+  if (other) filters.push(`그 외 ${other}개 조건`);
+  $("summary-filters").innerHTML =
+    filters.map((v) => `<span>${v}</span>`).join("") ||
+    "<span>필터 없이 자유롭게</span>";
+  $("summary-count").textContent = `${int("count").toLocaleString()}줄`;
+  $("summary-top").textContent = `TOP ${int("top")}`;
+  $("simulation-context").innerHTML =
+    `<span>남은 번호 ${remaining}개</span><span>활성 필터 ${Object.values(state.filters).filter((f) => f.enabled).length}개</span><span>선정 ${int("top")}줄</span>`;
+}
+$("frequency-map").onclick = safely((e) => {
+  const b = e.target.closest("[data-frequency]");
+  if (!b) return;
+  const n = Number(b.dataset.frequency);
+  if (state.excluded.has(n)) {
+    state.excluded.delete(n);
+    delete state.origins[n];
+    renderNumbers();
+  } else addExcluded([n]);
+  $("frequency-map")
+    .querySelector(`[data-frequency="${n}"]`)
+    ?.focus({ preventScroll: true });
+});
+document.addEventListener("input", renderStudioSummary);
+document.addEventListener("change", renderStudioSummary);
+$("odd-values").addEventListener("click", renderStudioSummary);
+$("reset-filters").addEventListener("click", renderStudioSummary);
+window.addEventListener("hashchange", renderRoute);
+renderRoute();
 renderFilters();
 renderNumbers();
 renderSaved();
